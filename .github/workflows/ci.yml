@@ -14,5 +14,7 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
+      # Sandbox containers are created with --pull=never, so the images have to exist first.
+      - run: sh runtimes/build.sh
       # Runs the adversarial suite against the real Docker daemon on the runner.
       - run: ./mvnw -B verify
