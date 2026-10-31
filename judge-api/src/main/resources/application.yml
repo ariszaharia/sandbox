@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: judge
+  datasource:
+    url: ${JUDGE_DB_URL:jdbc:postgresql://localhost:5433/judge}
+    username: ${JUDGE_DB_USER:judge}
+    password: ${JUDGE_DB_PASSWORD:judge}
+
+server:
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+
+judge:
+  admin-key: ${JUDGE_ADMIN_KEY:}          # empty means POST /api/problems refuses everyone
+  demo-data: false
+  queue-capacity: 64
+  workers: 2
+  max-source-size: 64KB
+  max-submission-body: 1MB                # 64 KB of source can be six times that once JSON-escaped
+  max-problem-body: 32MB
+  workspace-root: ${java.io.tmpdir}/judge-workspaces
+  preview-chars: 1024
+  sandbox:
+    mode: docker
+    docker-binary: docker
+    docker-host:                          # empty means whatever the docker client would use
+    cli-timeout: 30s
+    start-grace: 2s
+    stderr-retained: 64KB
+    compile-memory: 512MB
+    compile-output: 256KB
+    compile-processes: 128
+    open-files: 256
+    file-size: 8MB
+    tmpfs: 64MB
+    cpus: 1.0
+    output-limit: 8MB
+    process-limit: 64

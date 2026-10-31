@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Judge Sandbox</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #1a1a1a; --muted: #666; --line: #d8d8d8; --ok: #15803d; --bad: #b91c1c; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #161616; --fg: #ececec; --muted: #9a9a9a; --line: #3a3a3a; --ok: #4ade80; --bad: #f87171; } }
+  * { box-sizing: border-box; }
+  body { margin: 0 auto; max-width: 760px; padding: 24px 16px; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 16px; }
+  label { display: block; margin: 12px 0 4px; font-size: 13px; color: var(--muted); }
+  select, textarea, button { font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; }
+  select { width: 100%; }
+  textarea { width: 100%; height: 280px; font-family: ui-monospace, monospace; font-size: 13px; }
+  button { margin-top: 12px; padding: 6px 16px; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  pre { margin: 4px 0; padding: 8px; border: 1px solid var(--line); border-radius: 4px; overflow-x: auto; font-size: 13px; white-space: pre-wrap; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+  #statement { color: var(--muted); }
+  #status { margin-top: 16px; font-weight: 600; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); }
+</style>
+</head>
+<body>
+<h1>Judge Sandbox</h1>
+<label for="problem">Problem</label>
+<select id="problem"></select>
+<p id="statement"></p>
+<label for="language">Language</label>
+<select id="language"><option value="PYTHON">Python</option><option value="JAVA">Java (class must be named Main)</option></select>
+<label for="source">Source</label>
+<textarea id="source" spellcheck="false">a, b = map(int, input().split())
+print(a + b)
+</textarea>
+<button id="submit">Submit</button>
+<div id="status" role="status"></div>
+<div id="details"></div>
+<script>
+  const $ = id => document.getElementById(id);
+
+  async function json(response) {
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.detail || `Request failed with status ${response.status}`);
+    return body;
+  }
+
+  async function loadProblems() {
+    const problems = await json(await fetch('/api/problems'));
+    if (problems.length === 0) {
+      $('status').textContent = 'No problems yet. Start the service with judge.demo-data=true, or create one.';
+      $('submit').disabled = true;
+      return;
+    }
+    $('problem').replaceChildren(...problems.map(p => new Option(`${p.title} (${p.timeLimitMs} ms, ${p.memoryLimitMb} MB)`, p.id)));
+    await showStatement();
+  }
+
+  async function showStatement() {
+    const problem = await json(await fetch(`/api/problems/${$('problem').value}`));
+    $('statement').textContent = problem.statement;
+  }
+
+  function setStatus(text, cssClass = '') {
+    $('status').textContent = text;
+    $('status').className = cssClass;
+  }
+
+  function showResult(submission) {
+    const details = $('details');
+    details.replaceChildren();
+    if (submission.compileOutput) {
+      const pre = document.createElement('pre');
+      pre.textContent = submission.compileOutput;
+      details.append(pre);
+    }
+    if (submission.results.length > 0) {
+      const table = document.createElement('table');
+      table.innerHTML = '<thead><tr><th>Test</th><th>Verdict</th><th>Time</th><th>Memory</th><th>Output</th></tr></thead>';
+      const body = table.createTBody();
+      for (const r of submission.results) {
+        const row = body.insertRow();
+        const cells = [r.index, r.verdict, `${r.runtimeMs} ms`, r.peakMemoryKb == null ? '-' : `${Math.round(r.peakMemoryKb / 1024)} MB`,
+                       r.stdoutPreview == null ? '(hidden)' : r.stdoutPreview];
+        cells.forEach(value => { row.insertCell().textContent = value; });
+      }
+      details.append(table);
+    }
+  }
+
+  function follow(id) {
+    const stream = new EventSource(`/api/submissions/${id}/events`);
+    stream.addEventListener('status', async message => {
+      const event = JSON.parse(message.data);
+      setStatus(event.status === 'DONE' ? event.verdict : `${event.status}...`,
+                event.status !== 'DONE' ? '' : event.verdict === 'ACCEPTED' ? 'ok' : 'bad');
+      if (event.status === 'DONE') {
+        stream.close();
+        showResult(await json(await fetch(`/api/submissions/${id}`)));
+        $('submit').disabled = false;
+      }
+    });
+    stream.onerror = () => {
+      stream.close();
+      setStatus('Lost the connection to the status stream.', 'bad');
+      $('submit').disabled = false;
+    };
+  }
+
+  $('problem').addEventListener('change', () => showStatement().catch(e => setStatus(e.message, 'bad')));
+
+  $('submit').addEventListener('click', async () => {
+    $('submit').disabled = true;
+    $('details').replaceChildren();
+    setStatus('Submitting...');
+    try {
+      const response = await fetch('/api/submissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ problemId: $('problem').value, language: $('language').value, sourceCode: $('source').value })
+      });
+      if (response.status === 429) throw new Error('The queue is full. Try again in a moment.');
+      follow((await json(response)).id);
+    } catch (e) {
+      setStatus(e.message, 'bad');
+      $('submit').disabled = false;
+    }
+  });
+
+  loadProblems().catch(e => setStatus(e.message, 'bad'));
+</script>
+</body>
+</html>
