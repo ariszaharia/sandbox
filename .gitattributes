@@ -1,0 +1,3 @@
+# judge-exec.sh runs inside Linux containers; CRLF breaks its shebang.
+*.sh text eol=lf
+mvnw text eol=lf

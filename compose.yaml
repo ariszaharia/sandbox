@@ -1,0 +1,15 @@
+# Development database. Port 5433 avoids any Postgres already on the host.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: judge
+      POSTGRES_USER: judge
+      POSTGRES_PASSWORD: judge
+    ports:
+      - "5433:5432"
+    volumes:
+      - judge-db:/var/lib/postgresql/data
+
+volumes:
+  judge-db:
