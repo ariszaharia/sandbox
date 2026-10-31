@@ -39,6 +39,11 @@ final class JavaSpec implements LanguageSpec {
                 "-XX:-UsePerfData",           // no mmap'd file in /tmp
                 "-XX:MaxRAMPercentage=75",    // the default of 25% is a quarter of what the problem allows
                 "-XX:+ExitOnOutOfMemoryError",// a catch block must not be able to survive MLE
+                // The JVM's own messages default to stdout, where they would be compared as the
+                // program's answer and where indicatesOutOfMemory would never see them.
+                "-XX:+DisplayVMOutputToStderr",
+                "-Xlog:disable",
+                "-Xlog:all=warning:stderr",
                 "-Dstdout.encoding=UTF-8",    // the container's POSIX locale would print '?' for non-ASCII
                 "-Dstderr.encoding=UTF-8",
                 "-cp", workdir,
